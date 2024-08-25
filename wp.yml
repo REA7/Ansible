@@ -1,0 +1,149 @@
+---
+
+- hosts: localhost
+  become: yes
+
+
+  vars_prompt:
+  - name: "mysql_root_password"
+    prompt: "Enter the new MySQL root password"
+  - name: "new_db"
+    prompt: "Enter the name of the new database"
+  - name: "new_user"
+    prompt: "Enter the name of the new user"
+  - name: "new_user_password"
+    prompt: "Enter the password for the new user"
+    private: yes
+
+  tasks:
+  - name: Update apt package index
+    apt:
+      update_cache: yes
+
+  - name: Install Apache
+    apt:
+      name: apache2
+      state: latest
+
+  - name: Enable and start Apache
+    systemd:
+      name: apache2
+      enabled: yes
+      state: started
+
+  - name: Install MariaDB
+    apt:
+      name:
+          - mariadb-server
+          - mariadb-client
+      state: latest
+
+  - name: Enable and start MariaDB
+    systemd:
+      name: mariadb
+      enabled: yes
+      state: started
+
+  - name: Run mysql_secure_installation (automated)
+    mysql_secure_installation:
+      login_user: root
+      login_password: ''
+      root_password: "{{ mysql_root_password }}"
+      remove_anonymous_users: yes
+      disallow_root_login_remotely: yes
+      remove_test_db: yes
+      create_root_user: yes
+
+  - name: Install PHP and necessary extensions
+    apt:
+      name:
+        - php
+        - php-common
+        - php-mysql
+        - php-xml
+        - php-xmlrpc
+        - php-curl
+        - php-gd
+        - php-imagick
+        - php-cli
+        - php-dev
+        - php-imap
+        - php-mbstring
+        - php-soap
+        - php-zip
+        - php-intl
+      state: latest
+
+  - name: Install wget and unzip
+    apt:
+      name:
+        - wget
+        - unzip
+      state: latest
+
+  - name: Download WordPress
+    get_url:
+      url: https://wordpress.org/latest.zip
+      dest: /tmp/latest.zip
+
+  - name: Unzip WordPress
+    unarchive:
+      src: /tmp/latest.zip
+      dest: /tmp/
+      remote_src: yes
+
+  - name: Copy WordPress files to /var/www/html
+    copy:
+      src: /tmp/wordpress/
+      dest: /var/www/html/
+      remote_src: yes
+
+  - name: Remove default Apache index.html
+    file:
+      path: /var/www/html/index.html
+      state: absent
+
+  - name: Install additional PHP extensions
+    apt:
+      name:
+        - php-mysql
+        - php-cgi
+        - php-cli
+        - php-gd
+      state: latest
+
+  - name: Restart Apache
+    systemd:
+      name: apache2
+      state: restarted
+
+  - name: Set correct permissions on /var/www
+    file:
+      path: /var/www/
+      owner: www-data
+      group: www-data
+      recurse: yes
+
+  - name: Create MySQL database and user
+    mysql_db:
+      name: "{{ new_db }}"
+      state: latest
+
+  - name: Create MySQL user
+    mysql_user:
+      name: "{{ new_user }}"
+      password: "{{ new_user_password }}"
+      priv: "{{ new_db }}.*:ALL"
+      host: "%"
+      state: latest
+
+  - name: Flush MySQL privileges
+    mysql_user:
+      name: "{{ new_user }}"
+      state: latest
+      priv: "flush"
+
+  - name: Restart Apache after MySQL user creation
+    systemd:
+      name: apache2
+      state: restarted
