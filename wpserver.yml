@@ -2,6 +2,18 @@
 
 - hosts: localhost
   become: yes
+  vars_prompt:
+    - name: "new_db"
+      prompt: "Enter the name of the new database"
+    - name: "new_user"
+      prompt: "Enter the name of the new user"
+    - name: "new_user_password"
+      prompt: "Enter the password for the new user"
+      private: yes
+    - name: "mysql_root_password"
+      prompt: "Enter the new MySQL root password"
+      private: yes
+
   tasks:
     - name: Update apt package index
       apt:
@@ -40,18 +52,18 @@
         state: latest
 
 
-    - name: Enable and start Apache and MariaDB
+    - name: Enable and start Apache
       systemd:
-        name:
-          - apache2
-          - mariadb
+        name: apache2
         enabled: yes
         state: started
 
-  vars_prompt:
-    - name: "mysql_root_password"
-      prompt: "Enter the new MySQL root password"
-      private: yes
+    - name: Enable and start MariaDB
+      systemd:
+        name: mariadb
+        enabled: yes
+        state: started
+
 
     - name: mysql secure installation
       become: yes
@@ -96,16 +108,6 @@
         owner: www-data
         group: www-data
         recurse: yes
-
-  vars_prompt:
-    - name: "new_db"
-      prompt: "Enter the name of the new database"
-    - name: "new_user"
-      prompt: "Enter the name of the new user"
-    - name: "new_user_password"
-      prompt: "Enter the password for the new user"
-      private: yes
-
 
     - name: Create MySQL database
       mysql_db:
