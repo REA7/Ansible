@@ -1,0 +1,165 @@
+---
+
+- hosts: localhost
+  become: yes
+
+  vars_prompt:
+    - name: "new_db"
+      prompt: "Enter the name of the new database"
+    - name: "new_user"
+      prompt: "Enter the name of the new user"
+    - name: "new_user_password"
+      prompt: "Enter the password for the new user"
+      private: yes
+    - name: "mysql_root_password"
+      prompt: "Enter the new MySQL root password"
+      private: yes
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+
+    - name: Install Apache
+      apt:
+        name: apache2
+        state: latest
+
+    - name: Enable and start Apache
+      systemd:
+        name: apache2
+        enabled: yes
+        state: started
+
+    - name: Install MariaDB
+      apt:
+        name:
+          - mariadb-server
+          - mariadb-client
+        state: latest
+
+    - name: Enable and start MariaDB
+      systemd:
+        name: mariadb
+        enabled: yes
+        state: started
+
+    - name: Install required Python packages for MySQL
+      apt:
+        name:
+          - python3-pymysql
+        state: present
+
+    - name: Configure MySQL root user to use password authentication
+      mysql_user:
+        name: root
+        host: localhost
+        password: '{{ mysql_root_password }}'
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        check_implicit_admin: yes
+        state: present
+
+    - name: mysql secure installation
+      become: yes
+      expect:
+        command: mysql_secure_installation
+        responses:
+          'Enter current password for root': '{{ mysql_root_password }}'
+          'Set root password': 'n'
+          'Remove anonymous users': 'y'
+          'Disallow root login remotely': 'y'
+          'Remove test database': 'y'
+          'Reload privilege tables now': 'y'
+        timeout: 1
+      register: secure_mariadb
+      failed_when: "'... Failed!' in secure_mariadb.stdout_lines"
+
+    - name: Install PHP and necessary extensions
+      apt:
+        name:
+          - php
+          - php-common
+          - php-mysql
+          - php-xml
+          - php-xmlrpc
+          - php-curl
+          - php-gd
+          - php-imagick
+          - php-cli
+          - php-dev
+          - php-imap
+          - php-mbstring
+          - php-soap
+          - php-zip
+          - php-intl
+        state: latest
+
+    - name: Install wget and unzip
+      apt:
+        name:
+          - wget
+          - unzip
+        state: latest
+
+    - name: Download WordPress
+      get_url:
+        url: https://wordpress.org/latest.zip
+        dest: /tmp/latest.zip
+
+    - name: Unzip WordPress
+      unarchive:
+        src: /tmp/latest.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Copy WordPress files to /var/www/html
+      copy:
+        src: /tmp/wordpress/
+        dest: /var/www/html/
+        remote_src: yes
+
+    - name: Remove default Apache index.html
+      file:
+        path: /var/www/html/index.html
+        state: absent
+
+    - name: Install additional PHP extensions
+      apt:
+        name:
+          - php-mysql
+          - php-cgi
+          - php-cli
+          - php-gd
+        state: latest
+
+    - name: Set correct permissions on /var/www
+      file:
+        path: /var/www/
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: Create MySQL database
+      mysql_db:
+        name: '{{ new_db }}'
+        state: present
+        login_user: root
+        login_password: '{{ mysql_root_password }}'
+
+    - name: Create MySQL user and grant privileges
+      mysql_user:
+        name: '{{ new_user }}'
+        password: '{{ new_user_password }}'
+        priv: '{{ new_db }}.*:ALL'
+        host: '%'
+        state: present
+        login_user: root
+        login_password: '{{ mysql_root_password }}'
+
+    - name: Restart Apache after MySQL user creation
+      systemd:
+        name: apache2
+        state: restarted
