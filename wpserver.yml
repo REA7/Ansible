@@ -53,16 +53,16 @@
 
 
     - name: Enable and start Apache
-      systemd:
+      service:
         name: apache2
-        enabled: yes
         state: started
+        enabled: yes
 
     - name: Enable and start MariaDB
-      systemd:
+      service:
         name: mariadb
-        enabled: yes
         state: started
+        enabled: yes
 
 
     - name: mysql secure installation
@@ -127,6 +127,6 @@
         login_password: '{{ mysql_root_password }}'
 
     - name: Restart Apache after MySQL user creation
-      systemd:
+      service:
         name: apache2
         state: restarted
